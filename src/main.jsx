@@ -2,17 +2,14 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
-import AuthProvider from './auth/AuthContext.jsx'; // Import the default export
+import AuthProvider from './auth/AuthContext';
 import './index.css';
-
 
 // Import any additional CSS files after Tailwind
 // import './App.css' 
 
-// Initialize Neo4j Service if needed
-import neo4jService from './services/neo4jService.js'
-// Replace with your actual Neo4j connection details
-// neo4jService.initialize('neo4j://localhost:7687', 'neo4j', 'password')
+// Initialize Neo4j Service
+import neo4jService from './services/neo4jService';
 
 try {
   neo4jService.initialize(
@@ -23,7 +20,6 @@ try {
 } catch (error) {
   console.error('Failed to initialize Neo4j:', error);
 }
-
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

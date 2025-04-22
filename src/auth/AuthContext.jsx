@@ -1,4 +1,3 @@
-// AuthContext.jsx
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import neo4jService from '../services/neo4jService';
 
@@ -20,34 +19,37 @@ export const AuthProvider = ({ children }) => {
 
   // Check for existing user session on component mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
+    const checkUserSession = async () => {
       try {
-        const user = JSON.parse(storedUser);
-        setCurrentUser(user);
+        const storedUser = localStorage.getItem('currentUser');
+        if (storedUser) {
+          const user = JSON.parse(storedUser);
+          setCurrentUser(user);
+        }
       } catch (error) {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem('currentUser');
+      } finally {
+        setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+    
+    checkUserSession();
   }, []);
 
-  // Sign in function (no password for simplicity)
-
-  // Updated signIn function to allow login with user ID
-const signIn = async (username) => {
+  // Sign in function - simplified to use only user ID
+  const signIn = async (userId) => {
     try {
       setLoading(true);
       
-      // Modified query to search by ID instead of name/email
+      // Query Neo4j for user with this ID
       const query = `
         MATCH (u:USER)
-        WHERE u.id = $username
+        WHERE u.id = $userId
         RETURN u
       `;
       
-      const records = await neo4jService.executeQuery(query, { username });
+      const records = await neo4jService.executeQuery(query, { userId });
       
       if (records.length === 0) {
         throw new Error('User not found');
@@ -66,7 +68,6 @@ const signIn = async (username) => {
       setLoading(false);
     }
   };
- 
 
   // Sign out function
   const signOut = () => {
@@ -74,26 +75,10 @@ const signIn = async (username) => {
     setCurrentUser(null);
   };
 
-  // Register a new user
+  // Register a new user - basic functionality
   const register = async (userData) => {
     try {
       setLoading(true);
-      
-      // First check if user already exists
-      const checkQuery = `
-        MATCH (u:USER)
-        WHERE u.email = $email OR u.name = $name
-        RETURN count(u) as count
-      `;
-      
-      const checkResult = await neo4jService.executeQuery(checkQuery, { 
-        email: userData.email,
-        name: userData.name
-      });
-      
-      if (checkResult[0].get('count').toNumber() > 0) {
-        throw new Error('User with this email or name already exists');
-      }
       
       // Generate a unique ID for the new user
       const userCountResult = await neo4jService.executeQuery(
@@ -107,309 +92,24 @@ const signIn = async (username) => {
         CREATE (u:USER {
           id: $id,
           name: $name,
-          firstName: $firstName,
-          lastName: $lastName,
           email: $email,
-          age: $age,
-          profession: $profession,
-          relationshipStatus: $relationshipStatus,
-          hobbies: $hobbies,
-          activityLevel: $activityLevel
+          joinedDate: $joinedDate
         })
         RETURN u
       `;
       
+      const currentDate = new Date().toISOString().split('T')[0];
+      
       const userResult = await neo4jService.executeQuery(createUserQuery, {
         id: userId,
-        name: userData.name,
-        firstName: userData.firstName || '',
-        lastName: userData.lastName || '',
-        email: userData.email,
-        age: parseInt(userData.age) || 0,
-        profession: userData.profession || '',
-        relationshipStatus: userData.relationshipStatus || '',
-        hobbies: userData.hobbies || '',
-        activityLevel: userData.activityLevel || 'Medium'
+        name: userData.name || '',
+        email: userData.email || '',
+        joinedDate: currentDate
       });
       
       const newUser = userResult[0].get('u').properties;
       
-      // Connect user to city/location if provided
-      if (userData.city) {
-        try {
-          // Try to find existing city first
-          const findCityQuery = `
-            MATCH (c:CITY {name: $cityName})
-            RETURN c
-          `;
-          
-          const cityResult = await neo4jService.executeQuery(findCityQuery, { cityName: userData.city });
-          
-          let cityId;
-          
-          if (cityResult.length === 0) {
-            // City doesn't exist, create a new one
-            const cityCountResult = await neo4jService.executeQuery(
-              `MATCH (c:CITY) RETURN count(c) as count`
-            );
-            const cityCount = cityCountResult[0].get('count').toNumber();
-            cityId = `CITY-${cityCount + 1}`;
-            
-            // Create city
-            await neo4jService.executeQuery(`
-              CREATE (c:CITY {id: $id, name: $name})
-              
-              // Connect to state if available
-              WITH c
-              MATCH (s:STATE {id: $stateId})
-              CREATE (c)-[:PART_OF]->(s)
-            `, {
-              id: cityId,
-              name: userData.city,
-              stateId: userData.state || 'STATE-1' // Default to first state if not specified
-            });
-          } else {
-            cityId = cityResult[0].get('c').properties.id;
-          }
-          
-          // Connect user to city
-          await neo4jService.executeQuery(`
-            MATCH (u:USER {id: $userId})
-            MATCH (c:CITY {id: $cityId})
-            CREATE (u)-[:LIVES_IN]->(c)
-          `, { userId, cityId });
-        } catch (error) {
-          console.error('Error connecting user to location:', error);
-          // Continue with registration even if location connection fails
-        }
-      }
-      
-      // Connect user to genre preferences if provided
-      if (userData.genrePreferences && userData.genrePreferences.length > 0) {
-        for (const genreName of userData.genrePreferences) {
-          try {
-            // Find or create genre
-            const findGenreQuery = `
-              MATCH (g:GENRE {name: $genreName})
-              RETURN g
-            `;
-            
-            const genreResult = await neo4jService.executeQuery(findGenreQuery, { genreName });
-            
-            let genreId;
-            
-            if (genreResult.length === 0) {
-              // Genre doesn't exist, create a new one
-              const genreCountResult = await neo4jService.executeQuery(
-                `MATCH (g:GENRE) RETURN count(g) as count`
-              );
-              const genreCount = genreCountResult[0].get('count').toNumber();
-              genreId = `GENRE-${genreCount + 1}`;
-              
-              // Create genre
-              await neo4jService.executeQuery(`
-                CREATE (g:GENRE {
-                  id: $id, 
-                  name: $name,
-                  description: $description
-                })
-              `, {
-                id: genreId,
-                name: genreName,
-                description: `Books in the ${genreName} category`
-              });
-            } else {
-              genreId = genreResult[0].get('g').properties.id;
-            }
-            
-            // Connect user to genre with random strength between 0.7 and 0.9
-            const strength = (Math.floor(Math.random() * 3) + 7) / 10; // 0.7, 0.8, or 0.9
-            
-            await neo4jService.executeQuery(`
-              MATCH (u:USER {id: $userId})
-              MATCH (g:GENRE {id: $genreId})
-              CREATE (u)-[:PREFERS_GENRE {strength: $strength}]->(g)
-            `, { userId, genreId, strength });
-          } catch (error) {
-            console.error(`Error connecting user to genre ${genreName}:`, error);
-            // Continue with other genres
-          }
-        }
-      }
-      
-      // Connect user to author preferences if provided
-      if (userData.authorPreferences && userData.authorPreferences.length > 0) {
-        for (const authorName of userData.authorPreferences) {
-          try {
-            // Find or create author
-            const findAuthorQuery = `
-              MATCH (a:AUTHOR {name: $authorName})
-              RETURN a
-            `;
-            
-            const authorResult = await neo4jService.executeQuery(findAuthorQuery, { authorName });
-            
-            let authorId;
-            
-            if (authorResult.length === 0) {
-              // Author doesn't exist, create a new one
-              const authorCountResult = await neo4jService.executeQuery(
-                `MATCH (a:AUTHOR) RETURN count(a) as count`
-              );
-              const authorCount = authorCountResult[0].get('count').toNumber();
-              authorId = `AUTHOR-${authorCount + 1}`;
-              
-              // Create author with minimal details
-              await neo4jService.executeQuery(`
-                CREATE (a:AUTHOR {
-                  id: $id, 
-                  name: $name,
-                  nationality: $nationality,
-                  bio: $bio
-                })
-              `, {
-                id: authorId,
-                name: authorName,
-                nationality: userData.authorNationality || 'Unknown',
-                bio: `Author of various works`
-              });
-            } else {
-              authorId = authorResult[0].get('a').properties.id;
-            }
-            
-            // Connect user to author with random strength between 0.7 and 0.9
-            const strength = (Math.floor(Math.random() * 3) + 7) / 10; // 0.7, 0.8, or 0.9
-            
-            await neo4jService.executeQuery(`
-              MATCH (u:USER {id: $userId})
-              MATCH (a:AUTHOR {id: $authorId})
-              CREATE (u)-[:PREFERS_AUTHOR {strength: $strength}]->(a)
-            `, { userId, authorId, strength });
-          } catch (error) {
-            console.error(`Error connecting user to author ${authorName}:`, error);
-            // Continue with other authors
-          }
-        }
-      }
-      
-      // Connect user to theme preferences if provided
-      if (userData.themePreferences && userData.themePreferences.length > 0) {
-        for (const themeName of userData.themePreferences) {
-          try {
-            // Find or create theme
-            const findThemeQuery = `
-              MATCH (t:THEME {name: $themeName})
-              RETURN t
-            `;
-            
-            const themeResult = await neo4jService.executeQuery(findThemeQuery, { themeName });
-            
-            let themeId;
-            
-            if (themeResult.length === 0) {
-              // Theme doesn't exist, create a new one
-              const themeCountResult = await neo4jService.executeQuery(
-                `MATCH (t:THEME) RETURN count(t) as count`
-              );
-              const themeCount = themeCountResult[0].get('count').toNumber();
-              themeId = `THEME-${themeCount + 1}`;
-              
-              // Create theme
-              await neo4jService.executeQuery(`
-                CREATE (t:THEME {
-                  id: $id, 
-                  name: $name,
-                  description: $description
-                })
-              `, {
-                id: themeId,
-                name: themeName,
-                description: `Books exploring the theme of ${themeName}`
-              });
-            } else {
-              themeId = themeResult[0].get('t').properties.id;
-            }
-            
-            // Connect user to theme with random strength between 0.7 and 0.9
-            const strength = (Math.floor(Math.random() * 3) + 7) / 10; // 0.7, 0.8, or 0.9
-            
-            await neo4jService.executeQuery(`
-              MATCH (u:USER {id: $userId})
-              MATCH (t:THEME {id: $themeId})
-              CREATE (u)-[:PREFERS_THEME {strength: $strength}]->(t)
-            `, { userId, themeId, strength });
-          } catch (error) {
-            console.error(`Error connecting user to theme ${themeName}:`, error);
-            // Continue with other themes
-          }
-        }
-      }
-      
-      // Create reading context for the user
-      try {
-        const readingContextQuery = `
-          CREATE (rc:READING_CONTEXT {
-            id: $id,
-            environment: $environment,
-            environmentPreference: $environmentPreference,
-            timeOfDay: $timeOfDay,
-            timePreference: $timePreference,
-            formatPreference: $formatPreference,
-            readingDuration: $readingDuration,
-            updateDate: $updateDate
-          })
-          WITH rc
-          MATCH (u:USER {id: $userId})
-          CREATE (u)-[:HAS_READING_CONTEXT]->(rc)
-        `;
-        
-        // Default reading context values
-        const environment = userData.readingEnvironment || 'home, cafe, commute';
-        const timeOfDay = userData.readingTime || 'morning, evening, weekend';
-        
-        // Create JSON preference objects
-        const envPrefs = {};
-        environment.split(',').forEach((env, i) => {
-          const trimmed = env.trim();
-          if (trimmed) {
-            envPrefs[trimmed] = 5 - i % 3; // 5, 4, or 3
-          }
-        });
-        
-        const timePrefs = {};
-        timeOfDay.split(',').forEach((time, i) => {
-          const trimmed = time.trim();
-          if (trimmed) {
-            timePrefs[trimmed] = 5 - i % 3; // 5, 4, or 3
-          }
-        });
-        
-        // Default format preferences
-        const formatPrefs = {
-          "physical": userData.formatPreference === 'physical' ? 5 : 3,
-          "ebook": userData.formatPreference === 'ebook' ? 5 : 3,
-          "audiobook": userData.formatPreference === 'audiobook' ? 5 : 2
-        };
-        
-        const readingContextId = `RC-${userId}`;
-        
-        await neo4jService.executeQuery(readingContextQuery, {
-          id: readingContextId,
-          environment: environment,
-          environmentPreference: JSON.stringify(envPrefs),
-          timeOfDay: timeOfDay,
-          timePreference: JSON.stringify(timePrefs),
-          formatPreference: JSON.stringify(formatPrefs),
-          readingDuration: userData.readingDuration || '45min',
-          updateDate: new Date().toISOString(),
-          userId
-        });
-      } catch (error) {
-        console.error('Error creating reading context:', error);
-        // Continue with registration even if reading context creation fails
-      }
-      
-      // Store user in local storage and update state
+      // Store user in local storage
       localStorage.setItem('currentUser', JSON.stringify(newUser));
       setCurrentUser(newUser);
       
@@ -433,7 +133,7 @@ const signIn = async (username) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {!loading ? children : <div>Loading...</div>}
     </AuthContext.Provider>
   );
 };

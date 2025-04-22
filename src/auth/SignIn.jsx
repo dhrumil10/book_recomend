@@ -1,5 +1,4 @@
-// Updated SignIn.jsx component
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { Book } from 'lucide-react';
@@ -8,8 +7,15 @@ const SignIn = () => {
   const [userId, setUserId] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn } = useAuth();
+  const { signIn, currentUser } = useAuth();
   const navigate = useNavigate();
+
+  // Add useEffect to check if already logged in
+  useEffect(() => {
+    if (currentUser) {
+      navigate('/');
+    }
+  }, [currentUser, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,10 +30,9 @@ const SignIn = () => {
       setIsLoading(true);
       
       await signIn(userId);
-      navigate('/'); // Redirect to home page after sign in
+      navigate('/');
     } catch (error) {
       setError('Failed to sign in: ' + error.message);
-    } finally {
       setIsLoading(false);
     }
   };

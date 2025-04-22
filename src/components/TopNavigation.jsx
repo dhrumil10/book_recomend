@@ -1,29 +1,29 @@
-import { useNavigate } from 'react-router-dom'
-import { Book, Bell, User, Search } from 'lucide-react'
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Book, Home, User } from 'lucide-react';
 
-const TopNavigation = ({ title }) => {
-  const navigate = useNavigate()
-
+const TopNavigation = ({ title = "BookLovers" }) => {
+  const navigate = useNavigate();
+  
   return (
-    <div className="bg-indigo-600 text-white p-4 flex justify-between items-center">
-      <div className="flex items-center space-x-2">
-        <Book className="h-6 w-6" />
-        <span className="text-xl font-bold">BookLovers</span>
-        {title && <span className="mx-2">|</span>}
-        {title && <span className="text-lg">{title}</span>}
-      </div>
-      <div className="flex items-center space-x-4">
-        <Search className="h-5 w-5 cursor-pointer" onClick={() => navigate('/explore')} />
-        <Bell className="h-5 w-5 cursor-pointer" />
-        <div 
-          className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center cursor-pointer"
-          onClick={() => navigate('/profile')}
-        >
-          <User className="h-4 w-4" />
+    <header className="bg-indigo-600 text-white p-4 flex justify-between items-center">
+      <div className="flex items-center">
+        <div className="mr-2">
+          <Book className="h-6 w-6" />
         </div>
+        <h1 className="text-xl font-bold">{title}</h1>
       </div>
-    </div>
-  )
-}
+      
+      <nav className="flex space-x-4">
+        <button onClick={() => navigate('/')} className="flex items-center">
+          <Home className="h-5 w-5" />
+        </button>
+        <button onClick={() => navigate('/profile')} className="flex items-center">
+          <User className="h-5 w-5" />
+        </button>
+      </nav>
+    </header>
+  );
+};
 
-export default TopNavigation
+export default TopNavigation;
