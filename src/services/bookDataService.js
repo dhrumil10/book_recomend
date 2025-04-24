@@ -67,6 +67,44 @@ class BookDataService {
     });
   }
   
+
+  // Get friend recommendations based on similar tastes
+// Get friend recommendations based on similar tastes
+// Get friend recommendations based on similar tastes
+async getFriendRecommendations(userId, limit = 5) {
+  const query = `
+    MATCH (u:USER {id: $userId})-[:RATES]->(b:BOOK)<-[:RATES]-(other:USER)
+    WHERE NOT (u)-[:FRIEND|FOLLOWS]-(other) AND u <> other
+    
+    WITH other, count(b) as commonBooks
+    
+    MATCH (u)-[:PREFERS_GENRE]->(g:GENRE)<-[:PREFERS_GENRE]-(other)
+    WITH other, commonBooks, count(g) as commonGenres
+    
+    MATCH (u)-[:PREFERS_THEME]->(t:THEME)<-[:PREFERS_THEME]-(other)
+    WITH other, commonBooks, commonGenres, count(t) as commonThemes
+    
+    MATCH (u)-[:LIVES_IN]->(:CITY)-[:PART_OF]->(:STATE)<-[:PART_OF]-(:CITY)<-[:LIVES_IN]-(other)
+    WITH other, commonBooks, commonGenres, commonThemes, count(*) as sameState
+    
+    RETURN other, 
+      commonBooks * 2 + commonGenres * 3 + commonThemes * 2 + sameState * 1 as matchScore,
+      commonBooks
+    ORDER BY matchScore DESC
+    LIMIT toInteger($limit)
+  `;
+
+  const params = { userId, limit: Number(limit) };
+  const records = await neo4jService.executeQuery(query, params);
+  
+  return records.map(record => {
+    const user = record.get('other').properties;
+    const matchScore = record.get('matchScore').toNumber(); // Convert to number
+    const commonBooks = record.get('commonBooks').toNumber();
+    const matchPercent = Math.min(Math.round((matchScore / 50) * 100), 99);
+    return { ...user, matchScore: matchPercent, commonBooks };
+  });
+}
   // Get personalized book recommendations
   async getBookRecommendations(userId) {
     const query = `
