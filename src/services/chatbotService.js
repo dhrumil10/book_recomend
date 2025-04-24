@@ -5,6 +5,8 @@ class ChatbotService {
   constructor() {
     this.userId = 'USER-1'; // Default user for testing
     this.openAiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    this.useAgenticRag = true; // Toggle to switch between old and new implementations
+    this.agenticRagUrl = 'http://localhost:5050/api/frontend-chat'; // URL to the agentic_rag API
   }
 
   // Set the active user
@@ -15,6 +17,12 @@ class ChatbotService {
   // Process a user message using Graph RAG
   async processMessage(message) {
     try {
+      // If using agentic_rag, delegate to that service
+      if (this.useAgenticRag) {
+        return await this.processMessageWithAgenticRag(message);
+      }
+      
+      // Original implementation
       // Step 1: Retrieve relevant graph data from Neo4j
       const graphData = await this.retrieveGraphData(message);
       
@@ -32,6 +40,29 @@ class ChatbotService {
         content: "I'm sorry, I encountered an error while searching the knowledge graph. Please try again with a different question.",
         data: null
       };
+    }
+  }
+  
+  // New method to use agentic_rag backend
+  async processMessageWithAgenticRag(message) {
+    try {
+      // Send request to agentic_rag backend
+      const response = await axios.post(this.agenticRagUrl, {
+        message: message,
+        userId: this.userId
+      });
+      
+      // Return the response data
+      return response.data;
+    } catch (error) {
+      console.error('Error calling agentic_rag service:', error);
+      
+      // Fall back to the original implementation if agentic_rag fails
+      console.log('Falling back to original implementation...');
+      this.useAgenticRag = false;
+      const result = await this.processMessage(message);
+      this.useAgenticRag = true; // Reset for next time
+      return result;
     }
   }
 
