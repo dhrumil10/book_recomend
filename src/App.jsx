@@ -12,10 +12,18 @@ import BookDetailPage from './pages/BookDetailPage';
 import AuthorDetailPage from './pages/AuthorDetailPage';
 import GenreDetailPage from './pages/GenreDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
+import BottomNavigation from './components/BottomNavigation';
+import MyBooksPage from './pages/MyBooksPage';
+import SocialPage from './pages/SocialPage';
+import ChatbotPage from './pages/ChatbotPage';
+import ExplorePage from './pages/ExplorePage';
 
 function App() {
   const { currentUser, loading } = useAuth();
   const location = useLocation();
+
+  // Determine whether to show navigation based on current route
+  const showNavigation = currentUser && !['/signin', '/register'].includes(location.pathname);
 
   // Protected route component
   const ProtectedRoute = ({ children }) => {
@@ -45,70 +53,99 @@ function App() {
   };
 
   return (
-    <Routes>
-      <Route path="/signin" element={
-        <AuthRoute>
-          <SignIn />
-        </AuthRoute>
-      } />
-      
-      <Route path="/register" element={
-        <AuthRoute>
-          <Register />
-        </AuthRoute>
-      } />
-      
-      <Route path="/" element={
+    <div className="flex flex-col h-screen bg-gray-100">
+      <Routes>
+        <Route path="/signin" element={
+          <AuthRoute>
+            <SignIn />
+          </AuthRoute>
+        } />
+        
+        <Route path="/register" element={
+          <AuthRoute>
+            <Register />
+          </AuthRoute>
+        } />
+        
+        <Route path="/" element={
+          <ProtectedRoute>
+            <HomePage />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        } />
+
+        <Route path="/search" element={
+          <ProtectedRoute>
+            <SearchResultsPage />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/book/:id" element={
+          <ProtectedRoute>
+            <BookDetailPage />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/author/:id" element={
+          <ProtectedRoute>
+            <AuthorDetailPage />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/genre/:id" element={
+          <ProtectedRoute>
+            <GenreDetailPage />
+          </ProtectedRoute>
+        } />
+
+     
+      <Route path="/my-books" element={
         <ProtectedRoute>
-          <HomePage />
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/profile" element={
-        <ProtectedRoute>
-          <ProfilePage />
+          <MyBooksPage />
         </ProtectedRoute>
       } />
 
-      <Route path="/search" element={
+    <Route path="/explore" element={
+      <ProtectedRoute>
+        <ExplorePage />
+      </ProtectedRoute>
+    } />
+
+      <Route path="/social" element={
         <ProtectedRoute>
-          <SearchResultsPage />
+          <SocialPage />
         </ProtectedRoute>
       } />
-      
-      <Route path="/book/:id" element={
+
+      <Route path="/chatbot" element={
         <ProtectedRoute>
-          <BookDetailPage />
+          <ChatbotPage />
         </ProtectedRoute>
       } />
+
       
-      <Route path="/author/:id" element={
-        <ProtectedRoute>
-          <AuthorDetailPage />
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/genre/:id" element={
-        <ProtectedRoute>
-          <GenreDetailPage />
-        </ProtectedRoute>
-      } />
-      
-      <Route path="/not-found" element={
-        <NotFoundPage />
-      } />
-      
-      {/* Remove duplicate wildcard route that was causing conflicts */}
-      <Route path="*" element={
-        loading ? (
-          <div>Loading...</div>
-        ) : currentUser ? (
-          <Navigate to="/" replace />
-        ) : (
-          <Navigate to="/signin" replace />
-        )
-      } />
-    </Routes>
+        <Route path="/not-found" element={
+          <NotFoundPage />
+        } />
+        
+        <Route path="*" element={
+          loading ? (
+            <div>Loading...</div>
+          ) : currentUser ? (
+            <Navigate to="/" replace />
+          ) : (
+            <Navigate to="/signin" replace />
+          )
+        } />
+      </Routes>
+
+      {showNavigation && <BottomNavigation />}
+    </div>
   );
 }
 
