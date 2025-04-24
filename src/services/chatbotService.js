@@ -1,4 +1,5 @@
 import neo4jService from './neo4jService';
+import bookDataService from './bookDataService'; 
 import axios from 'axios';
 
 class ChatbotService {
@@ -73,7 +74,7 @@ class ChatbotService {
     
     // Determine what types of data to retrieve based on query content
     if (keywords.some(k => ['recommend', 'suggestion', 'similar', 'like'].includes(k))) {
-      graphData.recommendations = await neo4jService.getBookRecommendations(this.userId, 3);
+      graphData.recommendations = await bookDataService.getBookRecommendations(this.userId, 3);
       graphData.type = 'recommendations';
     } 
     
@@ -91,7 +92,7 @@ class ChatbotService {
           LIMIT 1
         `;
         
-        const records = await neo4jService.executeQuery(authorQuery, { name: authorName });
+        const records = await bookDataService.executeQuery(authorQuery, { name: authorName });
         
         if (records.length > 0) {
           graphData.author = records[0].get('a').properties;
@@ -109,7 +110,7 @@ class ChatbotService {
         LIMIT 3
       `;
       
-      const records = await neo4jService.executeQuery(genreQuery, { userId: this.userId });
+      const records = await bookDataService.executeQuery(genreQuery, { userId: this.userId });
       
       if (records.length > 0) {
         graphData.genres = records.map(r => ({ 
@@ -121,12 +122,12 @@ class ChatbotService {
     }
     
     if (keywords.some(k => ['friend', 'similar', 'people'].includes(k))) {
-      graphData.friendRecommendations = await neo4jService.getFriendRecommendations(this.userId, 3);
+      graphData.friendRecommendations = await bookDataService.getFriendRecommendations(this.userId, 3);
       graphData.type = 'friends';
     }
     
     if (keywords.some(k => ['event', 'festival', 'club', 'meetup'].includes(k))) {
-      graphData.events = await neo4jService.getUpcomingEvents(this.userId, 3);
+      graphData.events = await bookDataService.getUpcomingEvents(this.userId, 3);
       graphData.type = 'events';
     }
     
@@ -276,7 +277,7 @@ class ChatbotService {
   // Get trending books for recommendations
   async getTrendingBooks(limit = 5) {
     try {
-      return await neo4jService.getTrendingBooks(limit);
+      return await bookDataService.getTrendingBooks(limit);
     } catch (error) {
       console.error('Error getting trending books:', error);
       return [];
@@ -286,7 +287,7 @@ class ChatbotService {
   // Get personalized book recommendations
   async getBookRecommendations(limit = 5) {
     try {
-      return await neo4jService.getBookRecommendations(this.userId, limit);
+      return await bookDataService.getBookRecommendations(this.userId, limit);
     } catch (error) {
       console.error('Error getting book recommendations:', error);
       return [];
@@ -296,7 +297,7 @@ class ChatbotService {
   // Get friend recommendations based on similar tastes
   async getFriendRecommendations(limit = 5) {
     try {
-      return await neo4jService.getFriendRecommendations(this.userId, limit);
+      return await bookDataService.getFriendRecommendations(this.userId, limit);
     } catch (error) {
       console.error('Error getting friend recommendations:', error);
       return [];
@@ -306,7 +307,7 @@ class ChatbotService {
   // Get upcoming events
   async getUpcomingEvents(limit = 5) {
     try {
-      return await neo4jService.getUpcomingEvents(this.userId, limit);
+      return await bookDataService.getUpcomingEvents(this.userId, limit);
     } catch (error) {
       console.error('Error getting upcoming events:', error);
       return [];
