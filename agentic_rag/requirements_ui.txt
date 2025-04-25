@@ -1,0 +1,11 @@
+flask>=2.0.0
+flask-cors>=3.0.0
+python-dotenv>=1.0.0
+# Already in main requirements, but listed here for completeness
+langchain>=0.1.0
+langchain-openai>=0.0.2
+langgraph>=0.0.19
+neo4j>=5.15.0
+tavily-python>=0.2.6
+numpy>=1.22.0
+sentence-transformers>=2.2.2 
