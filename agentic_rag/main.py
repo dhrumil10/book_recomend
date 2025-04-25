@@ -19,6 +19,8 @@ load_dotenv()
 # Import the components
 from graph_agent import create_graph_rag_workflow
 from web_agent import web_agent
+from trading_agent import trading_agent
+from location_agent import location_agent
 
 class BookChatbot:
     def __init__(self):
@@ -33,6 +35,50 @@ class BookChatbot:
         workflow.add_node("web_agent", web_agent)
         workflow.add_edge("web_agent", "generate_response")
         
+        # Add the trading_agent node
+        workflow.add_node("trading_agent", trading_agent)
+        
+        # Add the location_agent node
+        workflow.add_node("location_agent", location_agent)
+        
+        # Add decision point after query_graph
+        def route_to_agent(state):
+            query = state.get("query", "").lower()
+            
+            # Check for trading-related query
+            if any(term in query for term in ["trading", "trade", "stock", "forex", "invest", "market", "crypto", "option", "day trade", "value invest"]):
+                return "trading_agent"
+                
+            # Check for location-related query
+            location_terms = ["location", "city", "country", "place", "travel", "visit", "in ", "from "]
+            if any(term in query for term in location_terms) or "books about " in query or "books set in " in query:
+                return "location_agent"
+                
+            # If not found in graph, use web search
+            elif not state.get("found_in_graph", False):
+                return "web_search"
+                
+            # Default to the standard response generator
+            else:
+                return "generate_response"
+        
+        # Add conditional edges without trying to remove existing ones first
+        # Just define the routing from query_graph directly
+        workflow.add_conditional_edges(
+            "query_graph",
+            route_to_agent,
+            {
+                "trading_agent": "trading_agent",
+                "location_agent": "location_agent", 
+                "web_search": "web_agent",
+                "generate_response": "generate_response"
+            }
+        )
+        
+        # Add edges from agents to generate_response
+        workflow.add_edge("trading_agent", "generate_response")
+        workflow.add_edge("location_agent", "generate_response")
+        
         # Compile the workflow after all nodes are set
         return workflow.compile()
     
@@ -43,6 +89,8 @@ class BookChatbot:
             "query": query,
             "graph_data": {},
             "web_data": None,
+            "trading_data": None,
+            "location_data": None,
             "response": None,
             "found_in_graph": False
         }
@@ -63,6 +111,24 @@ class BookChatbot:
                         print(f"Web agent response: {web_state['response'][:50]}...")
                     else:
                         print("Web agent did not return a response")
+                
+                # Check for trading_agent node
+                if "trading_agent" in event:
+                    print("Received trading agent response")
+                    trading_state = event["trading_agent"]
+                    if trading_state.get("response"):
+                        print(f"Trading agent response: {trading_state['response'][:50]}...")
+                    else:
+                        print("Trading agent did not return a response")
+                
+                # Check for location_agent node
+                if "location_agent" in event:
+                    print("Received location agent response")
+                    location_state = event["location_agent"]
+                    if location_state.get("response"):
+                        print(f"Location agent response: {location_state['response'][:50]}...")
+                    else:
+                        print("Location agent did not return a response")
                         
                 # The generate_response node will have the final state
                 if "generate_response" in event:
@@ -83,7 +149,13 @@ class BookChatbot:
             }
         
         # Determine the response type
-        if final_state["found_in_graph"]:
+        if final_state.get("location_data"):
+            response_type = "location"
+            response_data = final_state["location_data"]
+        elif final_state.get("trading_data"):
+            response_type = "trading"
+            response_data = final_state["trading_data"]
+        elif final_state["found_in_graph"]:
             response_type = "graph"
             response_data = final_state["graph_data"]
         else:
@@ -95,7 +167,24 @@ class BookChatbot:
         
         # If no response content but we have data, generate a fallback response
         if not response_content:
-            if response_type == "web" and final_state["web_data"]:
+            if response_type == "location" and final_state["location_data"]:
+                # Simple fallback for location data
+                location = final_state["location_data"]["location"]
+                categories = final_state["location_data"].get("categories", [])
+                if categories:
+                    category_names = [cat["name"] for cat in categories[:3]]
+                    response_content = f"I found books about {location} in these categories: {', '.join(category_names)}. Each category contains recommended books that will enhance your understanding or experience of {location}."
+                else:
+                    response_content = f"I searched for books related to {location} but couldn't find specific recommendations. Try asking about a different location or be more specific."
+            elif response_type == "trading" and final_state["trading_data"]:
+                # Simple fallback for trading data
+                topics = [topic.get('name', '') for topic in final_state["trading_data"] if topic.get('name')]
+                if topics:
+                    topics_text = ", ".join(topics[:3])
+                    response_content = f"I found some trading topics that might interest you, including {topics_text}. Each topic has recommended books to help you learn more."
+                else:
+                    response_content = f"I found information about trading topics that might help with your question about '{query}'. These topics cover different aspects of trading with book recommendations for each."
+            elif response_type == "web" and final_state["web_data"]:
                 # Simple fallback for web data
                 titles = [item.get('title', '') for item in final_state["web_data"] if item.get('title')]
                 if titles:
@@ -130,6 +219,8 @@ if __name__ == "__main__":
     # Use direct imports for script execution
     from agentic_rag.graph_agent import create_graph_rag_workflow
     from agentic_rag.web_agent import web_agent
+    from agentic_rag.trading_agent import trading_agent
+    from agentic_rag.location_agent import location_agent
     
     async def test_chatbot():
         chatbot = BookChatbot()
@@ -144,6 +235,18 @@ if __name__ == "__main__":
             # Test with web-based query
             print("\n=== Testing with a query that might need web search ===")
             response = await chatbot.process_message("What are the latest book releases in 2023?")
+            print(f"Response type: {response['type']}")
+            print(f"Response: {response['content']}")
+            
+            # Test with trading-related query
+            print("\n=== Testing with a trading-related query ===")
+            response = await chatbot.process_message("Tell me about top trading topics and book recommendations")
+            print(f"Response type: {response['type']}")
+            print(f"Response: {response['content']}")
+            
+            # Test with location-related query
+            print("\n=== Testing with a location-related query ===")
+            response = await chatbot.process_message("Recommend books about Paris")
             print(f"Response type: {response['type']}")
             print(f"Response: {response['content']}")
         except Exception as e:

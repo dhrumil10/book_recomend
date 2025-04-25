@@ -1,10 +1,103 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Filter, Clock, TrendingUp, Award, BookOpen, MapPin } from 'lucide-react';
 import TopNavigation from '../Components/TopNavigation';
+import agentService from '../services/agentService';
 
 const ExplorePage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('trending');
+  const [books, setBooks] = useState([]);
+  const [genres, setGenres] = useState([]);
+  const [selectedGenre, setSelectedGenre] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Fetch books based on active category
+  useEffect(() => {
+    const fetchBooks = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        let fetchedBooks = [];
+        
+        // Fetch books based on the active category
+        switch (activeCategory) {
+          case 'trending':
+            console.log('Fetching trending books...');
+            fetchedBooks = await agentService.getTrendingBooks();
+            break;
+            
+          case 'bestsellers':
+            console.log('Fetching bestseller books...');
+            fetchedBooks = await agentService.getBestsellerBooks();
+            break;
+            
+          case 'new':
+            console.log('Fetching new releases...');
+            fetchedBooks = await agentService.getNewReleases();
+            break;
+            
+          case 'local':
+            console.log('Fetching nearby books...');
+            fetchedBooks = await agentService.getNearbyBooks();
+            break;
+            
+          case 'genres':
+            if (selectedGenre) {
+              console.log(`Fetching books for genre: ${selectedGenre}...`);
+              fetchedBooks = await agentService.getBooksByGenre(selectedGenre);
+            } else {
+              // If we're on genres but no genre is selected, just show an empty list
+              fetchedBooks = [];
+            }
+            break;
+            
+          default:
+            fetchedBooks = [];
+        }
+        
+        console.log(`Received ${fetchedBooks.length} books for category: ${activeCategory}`);
+        
+        if (fetchedBooks && fetchedBooks.length > 0) {
+          // Add readers count if not present
+          const processedBooks = fetchedBooks.map(book => ({
+            ...book,
+            genres: book.genres || [book.genre || 'Fiction'].filter(Boolean),
+            readers: book.readers || Math.floor(Math.random() * 5000) + 500
+          }));
+          
+          setBooks(processedBooks);
+        } else {
+          console.log('No books returned, using defaults');
+          setBooks(defaultBooks);
+        }
+      } catch (error) {
+        console.error(`Error fetching ${activeCategory} books:`, error);
+        setError(`Failed to load ${activeCategory} books. Using default recommendations instead.`);
+        // Fallback to default books if there's an error
+        setBooks(defaultBooks);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    // Load genres when on the genres category
+    const fetchGenres = async () => {
+      if (activeCategory === 'genres' && genres.length === 0) {
+        try {
+          const fetchedGenres = await agentService.getGenres();
+          setGenres(fetchedGenres);
+        } catch (error) {
+          console.error('Error fetching genres:', error);
+          setGenres(defaultGenreItems);
+        }
+      }
+    };
+    
+    fetchBooks();
+    fetchGenres();
+  }, [activeCategory, selectedGenre]);
   
   const categories = [
     { id: 'trending', name: 'Trending', icon: TrendingUp },
@@ -14,7 +107,8 @@ const ExplorePage = () => {
     { id: 'genres', name: 'Genres', icon: BookOpen }
   ];
   
-  const genreItems = [
+  // Default genres if API fails
+  const defaultGenreItems = [
     { name: 'Science Fiction', color: 'bg-indigo-100', textColor: 'text-indigo-700' },
     { name: 'Fantasy', color: 'bg-purple-100', textColor: 'text-purple-700' },
     { name: 'Mystery', color: 'bg-green-100', textColor: 'text-green-700' },
@@ -29,7 +123,8 @@ const ExplorePage = () => {
     { name: 'Classic', color: 'bg-amber-100', textColor: 'text-amber-700' }
   ];
   
-  const trendingBooks = [
+  // Default books as fallback
+  const defaultBooks = [
     {
       id: 1,
       title: 'The Silent Patient',
@@ -64,12 +159,26 @@ const ExplorePage = () => {
     }
   ];
   
+  // Handle genre selection
+  const handleGenreClick = (genreName) => {
+    setSelectedGenre(genreName);
+  };
+  
   const getColorForGenre = (genre) => {
-    const found = genreItems.find(item => item.name === genre);
+    const allGenres = activeCategory === 'genres' ? genres : defaultGenreItems;
+    const found = allGenres.find(item => item.name === genre);
     if (found) {
       return { bg: found.color, text: found.textColor };
     }
     return { bg: 'bg-gray-100', text: 'text-gray-700' };
+  };
+  
+  // Handle category change - reset selected genre when changing categories
+  const handleCategoryChange = (categoryId) => {
+    setActiveCategory(categoryId);
+    if (categoryId !== 'genres') {
+      setSelectedGenre(null);
+    }
   };
   
   return (
@@ -103,7 +212,7 @@ const ExplorePage = () => {
               className={`flex-shrink-0 flex flex-col items-center cursor-pointer ${
                 activeCategory === category.id ? 'text-indigo-600' : 'text-gray-500'
               }`}
-              onClick={() => setActiveCategory(category.id)}
+              onClick={() => handleCategoryChange(category.id)}
             >
               <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-1 ${
                 activeCategory === category.id ? 'bg-indigo-100' : 'bg-gray-100'
@@ -118,10 +227,13 @@ const ExplorePage = () => {
         {/* Genres Grid (only shown when genres category is active) */}
         {activeCategory === 'genres' && (
           <div className="grid grid-cols-3 gap-2 px-4 mb-4">
-            {genreItems.map((genre, index) => (
+            {(genres.length > 0 ? genres : defaultGenreItems).map((genre, index) => (
               <div
                 key={index}
-                className={`${genre.color} ${genre.textColor} p-3 rounded-lg text-center text-sm font-medium cursor-pointer`}
+                className={`${genre.color} ${genre.textColor} p-3 rounded-lg text-center text-sm font-medium cursor-pointer ${
+                  selectedGenre === genre.name ? 'ring-2 ring-indigo-500' : ''
+                }`}
+                onClick={() => handleGenreClick(genre.name)}
               >
                 {genre.name}
               </div>
@@ -136,34 +248,57 @@ const ExplorePage = () => {
             {activeCategory === 'bestsellers' && 'Bestseller Books'}
             {activeCategory === 'new' && 'New Release Books'}
             {activeCategory === 'local' && 'Popular in Your Area'}
-            {activeCategory === 'genres' && 'Popular in All Genres'}
+            {activeCategory === 'genres' && selectedGenre ? `${selectedGenre} Books` : 'Popular in All Genres'}
           </h2>
           
-          <div className="space-y-4">
-            {trendingBooks.map(book => (
-              <div key={book.id} className="bg-white rounded-lg shadow p-3 flex">
-                <div className={`${book.cover} w-16 h-24 rounded flex-shrink-0`}></div>
-                <div className="ml-3 flex-1">
-                  <div className="font-semibold text-sm">{book.title}</div>
-                  <div className="text-xs text-gray-500 mb-1">{book.author}</div>
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    {book.genres.map((genre, idx) => {
-                      const colors = getColorForGenre(genre);
-                      return (
-                        <span key={idx} className={`${colors.bg} ${colors.text} text-xs px-2 py-0.5 rounded-full`}>
-                          {genre}
-                        </span>
-                      );
-                    })}
+          {/* Show error message if there is one */}
+          {error && (
+            <div className="bg-red-100 text-red-700 p-3 mb-4 rounded">
+              {error}
+            </div>
+          )}
+          
+          {loading ? (
+            <div className="flex justify-center items-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {books.length > 0 ? (
+                books.map(book => (
+                  <div key={book.id} className="bg-white rounded-lg shadow p-3 flex">
+                    <div className={`${book.cover} w-16 h-24 rounded flex-shrink-0`}></div>
+                    <div className="ml-3 flex-1">
+                      <div className="font-semibold text-sm">{book.title}</div>
+                      <div className="text-xs text-gray-500 mb-1">{book.author}</div>
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {book.genres && book.genres.map((genre, idx) => {
+                          const colors = getColorForGenre(genre);
+                          return (
+                            <span key={idx} className={`${colors.bg} ${colors.text} text-xs px-2 py-0.5 rounded-full`}>
+                              {genre}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center text-xs text-gray-500">
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                        <span>{book.readers.toLocaleString()} people reading</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center text-xs text-gray-500">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    <span>{book.readers.toLocaleString()} people reading</span>
-                  </div>
+                ))
+              ) : (
+                <div className="flex justify-center items-center py-8">
+                  <p className="text-gray-500">
+                    {activeCategory === 'genres' && !selectedGenre 
+                      ? 'Select a genre to see books' 
+                      : 'No books available.'}
+                  </p>
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
         </div>
         
         {/* Reading Challenges */}

@@ -434,8 +434,8 @@ def create_graph_rag_workflow():
     )
     workflow.add_edge("generate_response", END)
     
-    # Return workflow without compiling
-    return workflow 
+    # Return the workflow without compiling - let main.py handle compilation
+    return workflow
     
 
 

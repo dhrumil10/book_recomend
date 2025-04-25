@@ -6,6 +6,9 @@ from pathlib import Path
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from dotenv import load_dotenv
+from typing import Dict, Any, List
+from main import BookChatbot
+from pydantic import BaseModel
 
 # Add the current directory to the Python path
 current_dir = Path(__file__).parent
@@ -14,15 +17,23 @@ sys.path.append(str(current_dir))
 # Load environment variables
 load_dotenv()
 
-# Import the BookChatbot
-from main import BookChatbot
-
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
 # Initialize the chatbot
 chatbot = BookChatbot()
+
+# Example queries to show in the UI
+example_queries = [
+    "Recommend fantasy books similar to Lord of the Rings",
+    "What are good science fiction books about space exploration?",
+    "Tell me about top trading topics and book recommendations",
+    "Recommend books on cryptocurrency trading strategies",
+    "Suggest books about the history of Paris",
+    "What are good books set in Tokyo?",
+    "Recommend travel literature about Iceland"
+]
 
 # HTML template for the UI
 HTML_TEMPLATE = '''
@@ -64,6 +75,16 @@ HTML_TEMPLATE = '''
             margin-top: 0.5rem;
             background-color: #f8fafc;
         }
+        .book-item {
+            border-left: 3px solid #6366f1;
+            padding-left: 8px;
+            margin: 4px 0;
+        }
+        .topic-header {
+            font-weight: 600;
+            margin-top: 8px;
+            color: #4f46e5;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -73,7 +94,7 @@ HTML_TEMPLATE = '''
             
             <div id="chat-container" class="border border-gray-200 rounded-md mb-4 bg-white">
                 <div class="bot-message">
-                    Hello! I'm the BookLovers assistant. I can help you find books, learn about authors, discover genres, and more. What would you like to know?
+                    Hello! I'm the BookLovers assistant. I can help you find books, learn about authors, discover genres, trading topics, and more. What would you like to know?
                 </div>
             </div>
             
@@ -99,6 +120,8 @@ HTML_TEMPLATE = '''
                     <button class="example-query text-xs bg-gray-200 hover:bg-gray-300 py-1 px-2 rounded-md">Tell me about J.K. Rowling</button>
                     <button class="example-query text-xs bg-gray-200 hover:bg-gray-300 py-1 px-2 rounded-md">What are the top genres?</button>
                     <button class="example-query text-xs bg-gray-200 hover:bg-gray-300 py-1 px-2 rounded-md">What are the latest book releases in 2023?</button>
+                    <button class="example-query text-xs bg-gray-200 hover:bg-gray-300 py-1 px-2 rounded-md">Top 10 trading topics and books</button>
+                    <button class="example-query text-xs bg-gray-200 hover:bg-gray-300 py-1 px-2 rounded-md">Recommend books on cryptocurrency trading</button>
                 </div>
             </div>
             
@@ -176,6 +199,32 @@ HTML_TEMPLATE = '''
                         botMessageDiv.appendChild(dataCard);
                     }
                 }
+                // Add trading topic cards
+                else if (data.type === 'trading' && Array.isArray(data.data) && data.data.length > 0) {
+                    const dataCard = document.createElement('div');
+                    dataCard.className = 'data-card text-xs mt-2';
+                    
+                    dataCard.innerHTML = '<div class="font-semibold mb-2">Trading Topics and Book Recommendations:</div>';
+                    
+                    // Display up to 5 topics with their books
+                    const topicsToShow = data.data.slice(0, 5);
+                    topicsToShow.forEach((topic, i) => {
+                        if (topic.name) {
+                            dataCard.innerHTML += `<div class="topic-header">${i+1}. ${topic.name}</div>`;
+                            dataCard.innerHTML += `<div class="text-gray-600 mb-1">${topic.description || ''}</div>`;
+                            
+                            if (topic.books && topic.books.length > 0) {
+                                dataCard.innerHTML += '<div class="ml-3 mt-1">';
+                                topic.books.forEach(book => {
+                                    dataCard.innerHTML += `<div class="book-item">"${book.title}" by ${book.author}</div>`;
+                                });
+                                dataCard.innerHTML += '</div>';
+                            }
+                        }
+                    });
+                    
+                    botMessageDiv.appendChild(dataCard);
+                }
                 // Add web search data card if applicable
                 else if (data.type === 'web' && data.data) {
                     const dataCard = document.createElement('div');
@@ -201,8 +250,16 @@ HTML_TEMPLATE = '''
                 responseSource.textContent = data.type;
                 if (data.type === 'web') {
                     responseSource.classList.add('text-blue-600');
+                    responseSource.classList.remove('text-green-600');
+                    responseSource.classList.remove('text-amber-600');
+                } else if (data.type === 'trading') {
+                    responseSource.classList.remove('text-blue-600');
+                    responseSource.classList.add('text-amber-600');
+                    responseSource.classList.remove('text-green-600');
                 } else {
                     responseSource.classList.remove('text-blue-600');
+                    responseSource.classList.remove('text-amber-600');
+                    responseSource.classList.add('text-green-600');
                 }
                 
                 // Scroll to bottom
@@ -245,26 +302,112 @@ HTML_TEMPLATE = '''
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template('index.html', example_queries=example_queries)
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    data = request.json
-    query = data.get('query', '')
-    user_id = data.get('userId', 'USER-1')  # Get userId from request or use default
-    
-    if not query:
-        return jsonify({'error': 'No query provided'}), 400
-    
-    # Process with the chatbot (asyncio used for async functions)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
-        response = loop.run_until_complete(chatbot.process_message(query))
-    finally:
-        loop.close()
+        data = request.json
+        query = data.get('query', '')
+        
+        if not query:
+            return jsonify({'error': 'No query provided'}), 400
+        
+        # Process the message using our chatbot
+        result = asyncio.run(chatbot.process_message(query))
+        
+        # Handle different response types
+        response_type = result.get('type', 'text')
+        content = result.get('content', '')
+        data = result.get('data', None)
+        
+        response = {
+            'type': response_type,
+            'message': content,
+        }
+        
+        # Add specific data based on response type
+        if response_type == 'graph' and data:
+            # Format graph data for display
+            response['data'] = format_graph_data(data)
+        elif response_type == 'web' and data:
+            # Format web search results for display
+            response['data'] = format_web_data(data)
+        elif response_type == 'trading' and data:
+            # Format trading topics for display
+            response['data'] = format_trading_data(data)
+        elif response_type == 'location' and data:
+            # Format location books for display
+            response['data'] = format_location_data(data)
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        import traceback
+        print(f"Error processing request: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+def format_graph_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Format graph data for display in the UI."""
+    formatted_data = {
+        'nodes': [],
+        'relationships': []
+    }
     
-    return jsonify(response)
+    if 'nodes' in data:
+        formatted_data['nodes'] = data['nodes']
+    
+    if 'relationships' in data:
+        formatted_data['relationships'] = data['relationships']
+    
+    return formatted_data
+
+def format_web_data(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format web data for display in the UI."""
+    formatted_data = []
+    
+    for item in data:
+        formatted_item = {
+            'title': item.get('title', ''),
+            'url': item.get('link', ''),
+            'snippet': item.get('snippet', '')
+        }
+        formatted_data.append(formatted_item)
+    
+    return formatted_data
+
+def format_trading_data(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Format trading topics for display in the UI."""
+    formatted_data = []
+    
+    for topic in data:
+        formatted_topic = {
+            'name': topic.get('name', ''),
+            'description': topic.get('description', ''),
+            'books': topic.get('books', [])
+        }
+        formatted_data.append(formatted_topic)
+    
+    return formatted_data
+
+def format_location_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Format location book data for display in the UI."""
+    formatted_data = {
+        'location': data.get('location', ''),
+        'categories': []
+    }
+    
+    # Process categories of books
+    for category in data.get('categories', []):
+        formatted_category = {
+            'name': category.get('name', ''),
+            'description': category.get('description', ''),
+            'books': category.get('books', [])
+        }
+        formatted_data['categories'].append(formatted_category)
+    
+    return formatted_data
 
 # New endpoint for integration with the React frontend
 @app.route('/api/frontend-chat', methods=['POST'])
@@ -299,4 +442,5 @@ def add_cors_headers(response):
     return response
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5050) 
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True) 
